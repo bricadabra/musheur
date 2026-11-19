@@ -1,7 +1,7 @@
 /**
  * Does the copy of the datasets still match its own manifest?
  *
- * `public/data/` is a copy of what the musheur-data pipeline produces. Copies
+ * `public/data/` is a copy of what a separate data pipeline produces. Copies
  * drift: a department file goes missing, a rebuild changes the field list, the
  * tiles are updated and the indicators are not. None of that breaks the build,
  * and all of it breaks the application in front of someone.

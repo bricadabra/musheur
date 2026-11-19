@@ -1,5 +1,5 @@
 /**
- * The static side of the data, produced by the musheur-data pipeline.
+ * The static side of the data, produced by a separate data pipeline.
  *
  * Two layers that join on `id`, and never mix:
  *
