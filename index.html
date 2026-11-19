@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Musheur — où et quand aller aux champignons en forêt publique</title>
+  <meta name="description" content="Indice de pousse des champignons de 0 à 100 pour chaque forêt publique de France, aujourd'hui et sur 6 jours, calculé à partir de la pluie, de l'humidité et de la température du sol. Gratuit, sans compte.">
+  <meta name="keywords" content="champignons, cueillette, cèpes, girolles, forêt publique, forêt domaniale, ONF, pousse, météo, carte, France">
+  <meta name="author" content="Bricadabra">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="https://bricadabra.github.io/musheur/">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#1c2029">
+
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+
+  <!-- Open Graph / social cards. Absolute URLs: scrapers do not resolve relative ones. -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Musheur">
+  <meta property="og:locale" content="fr_FR">
+  <meta property="og:locale:alternate" content="en_GB">
+  <meta property="og:url" content="https://bricadabra.github.io/musheur/">
+  <meta property="og:title" content="Musheur — où et quand aller aux champignons">
+  <meta property="og:description" content="Un indice de pousse de 0 à 100 pour chaque forêt publique de France, aujourd'hui et sur 6 jours.">
+  <meta property="og:image" content="https://bricadabra.github.io/musheur/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Musheur, par Bricadabra : où et quand aller aux champignons dans les forêts publiques de France">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Musheur — où et quand aller aux champignons">
+  <meta name="twitter:description" content="Un indice de pousse de 0 à 100 pour chaque forêt publique de France, aujourd'hui et sur 6 jours.">
+  <meta name="twitter:image" content="https://bricadabra.github.io/musheur/og-image.png">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "Musheur",
+    "url": "https://bricadabra.github.io/musheur/",
+    "description": "Indice de pousse des champignons de 0 à 100 pour chaque forêt publique de France, aujourd'hui et sur 6 jours.",
+    "applicationCategory": "UtilitiesApplication",
+    "operatingSystem": "Web",
+    "inLanguage": ["fr", "en"],
+    "isAccessibleForFree": true,
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+    "image": "https://bricadabra.github.io/musheur/og-image.png",
+    "license": "https://opensource.org/licenses/MIT",
+    "codeRepository": "https://github.com/bricadabra/musheur",
+    "publisher": {
+      "@type": "Organization",
+      "name": "Bricadabra",
+      "url": "https://github.com/bricadabra",
+      "logo": "https://bricadabra.github.io/musheur/icon-512.png"
+    }
+  }
+  </script>
+</head>
+<!-- dvh, not vh: on a phone 100vh is the height with the address bar
+       retracted, which pushes the bottom of the list off screen. -->
+<body class="h-dvh overflow-hidden bg-shell">
+
+  <div class="flex h-full flex-col">
+
+    <!-- The two things the application does, promoted to primary navigation.
+         Everything else in this bar only qualifies whichever one is chosen. -->
+    <header class="relative z-40 flex shrink-0 flex-wrap items-center gap-x-2 gap-y-3 sm:gap-x-3 md:gap-x-5 border-b border-line bg-panel px-3 py-3 sm:px-4 md:px-5">
+      <!-- The collective's mark links to the collective; the word names the
+           application and is the page's only h1. -->
+      <div class="flex items-center gap-2">
+        <a href="https://github.com/bricadabra" class="shrink-0" data-i18n-title="link.org">
+          <img src="bricadabra.svg" alt="Bricadabra" width="24" height="24" class="size-6">
+        </a>
+        <!-- The word gives way below sm so the mode and language controls keep
+             one row on a phone; the mark stays. -->
+        <h1 class="sr-only text-xl leading-none font-medium tracking-tight sm:not-sr-only">musheur</h1>
+      </div>
+
+      <nav class="flex gap-1 rounded-sm bg-raised p-1" role="tablist" aria-label="Mode">
+        <button class="mode-btn" data-mode="browse">
+          <span data-i18n="panel.mode.browse"></span>
+        </button>
+        <button class="mode-btn" data-mode="follow">
+          <span data-i18n="panel.mode.follow"></span>
+          <span class="count" id="followCount" hidden></span>
+        </button>
+      </nav>
+
+      <!-- The scope of everything below. It sits in the middle of the bar and
+           carries its own label, because choosing it is the first thing anyone
+           does and the last thing they should have to hunt for. -->
+      <!-- Centred with auto margins rather than absolute positioning. Absolute
+           centring overlapped the mode buttons below about 1100 px and quietly
+           swallowed their clicks; auto margins cannot overlap anything. The
+           language group keeps its own `ml-auto` so it stays right when Follow
+           hides this. -->
+      <label id="deptField" class="order-last flex w-full min-w-0 items-center gap-2.5 md:order-none md:mx-auto md:w-auto">
+        <span class="shrink-0 text-sm text-soft" data-i18n="panel.department"></span>
+        <select id="dept"
+          class="min-w-0 flex-1 rounded-md border border-line-strong bg-raised px-3 py-2 text-[0.9375rem] font-medium text-text md:w-80 md:flex-none"></select>
+      </label>
+
+      <div class="ml-auto flex items-center gap-1 text-xs font-semibold">
+        <button class="lang-btn" data-lang="fr">FR</button>
+        <button class="lang-btn" data-lang="en">EN</button>
+        <a href="https://github.com/bricadabra/musheur" class="lang-btn" data-i18n-title="link.repo" data-i18n-label="link.repo">
+          <svg class="size-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        </a>
+      </div>
+    </header>
+
+    <div class="relative flex min-h-0 flex-1 flex-col md:flex-row">
+
+      <!-- Explore: ranking rail, analysis beside it, map behind. -->
+      <!-- On a phone the whole rail scrolls, filters included: with the map
+           above it, an opened filter block would otherwise squeeze the list
+           to nothing. From md the list scrolls alone under a fixed scope bar. -->
+      <aside id="rail" class="order-2 z-30 flex min-h-0 w-full flex-1 flex-col overflow-y-auto border-t border-line bg-panel md:order-1 md:overflow-hidden md:w-[23rem] md:flex-none md:border-t-0 md:border-r">
+        <div id="scopeBar" class="shrink-0 border-b border-line px-4 py-3.5">
+          <div id="dayStrip" class="flex gap-1" role="group" aria-label="Day"></div>
+          <div id="indexToggle" class="mt-3.5"></div>
+          <details class="group mt-3.5">
+            <summary class="cursor-pointer list-none text-sm text-soft select-none marker:content-none">
+              <span data-i18n="panel.filters"></span>
+              <span class="inline-block transition-transform group-open:rotate-90">›</span>
+            </summary>
+            <div class="mt-3 space-y-3">
+              <label class="block text-sm">
+                <span class="text-soft" data-i18n="panel.sort"></span>
+                <select id="sort" class="mt-1 w-full rounded-sm border border-line-strong bg-raised px-2 py-1 text-sm">
+                  <option value="score" data-i18n="sort.score"></option>
+                  <option value="trend" data-i18n="sort.trend"></option>
+                  <option value="area" data-i18n="sort.area"></option>
+                  <option value="name" data-i18n="sort.name"></option>
+                </select>
+              </label>
+              <label class="block text-sm">
+                <span class="text-soft" data-i18n="panel.minArea"></span>
+                <span class="mt-1 flex items-center gap-2">
+                  <input type="range" id="minArea" min="20" max="1000" step="20" class="w-full accent-primary">
+                  <output id="minAreaOut" class="w-12 shrink-0 text-right tnum"></output>
+                </span>
+              </label>
+              <label class="block text-sm">
+                <span class="text-soft" data-i18n="panel.minScore"></span>
+                <span class="mt-1 flex items-center gap-2">
+                  <input type="range" id="minScore" min="0" max="80" step="5" class="w-full accent-primary">
+                  <output id="minScoreOut" class="w-12 shrink-0 text-right tnum"></output>
+                </span>
+              </label>
+              <fieldset id="ownership" class="space-y-1">
+                <legend class="text-sm text-soft" data-i18n="panel.ownership"></legend>
+              </fieldset>
+            </div>
+          </details>
+        </div>
+        <div id="list" class="md:min-h-0 md:flex-1 md:overflow-y-auto"></div>
+      </aside>
+
+      <!-- Analysis. Docked against the rail and over the map on purpose: once
+           you are reading why an index is what it is, the map is not the
+           question any more. -->
+      <!-- Below md it covers the screen, header included, hence z-50: at z-30 it
+           sat under the header and under the rail, which shares its z-index. -->
+      <aside id="detail" class="order-3 hidden fixed inset-0 z-50 overflow-y-auto overscroll-contain md:z-30 bg-panel md:static md:w-[34rem] md:shrink-0 md:border-r md:border-line"></aside>
+
+      <div id="map" class="order-1 h-[40dvh] shrink-0 md:order-4 md:h-auto md:min-w-0 md:flex-1"></div>
+
+      <!-- Follow: no map at all. A board of the forests you watch. -->
+      <section id="board" class="hidden min-h-0 flex-1 overflow-y-auto bg-shell"></section>
+    </div>
+  </div>
+
+  <!-- What a crawler or a browser without JavaScript can read. -->
+  <noscript>
+    <p class="p-4">Musheur donne, pour chaque forêt publique de France, un indice de pousse des
+    champignons de 0 à 100, aujourd'hui et sur 6 jours, à partir de la pluie, de l'humidité et de la
+    température du sol. Cette page a besoin de JavaScript.
+    Code source : <a href="https://github.com/bricadabra/musheur">github.com/bricadabra/musheur</a>.</p>
+  </noscript>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
