@@ -11,6 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { windowDates, blocksFor, PAST_DAYS, FORECAST_DAYS } from "../src/weather.js";
+import { seasonFit, speciesIndex, speciesFor } from "../src/species.js";
 import {
   MODEL, OPTIMIST, ramp, trapezoid, band, BANDS, scoreForDay, detectTriggers, expectedFlush, addDays,
 } from "../src/score.js";
@@ -194,4 +195,62 @@ test("a recent downpour announces its flush while the index is still nil", () =>
 test("a flush whose window has passed is not expected any more", () => {
   const s = series(40, IDEAL, { 5: { precip: 15 }, 6: { precip: 15 } });
   assert.equal(expectedFlush(s, 39), null);
+});
+
+// ------------------------------------------------------------------ species
+
+test("the season wraps over the new year and softens at its edges", () => {
+  assert.equal(seasonFit(10, [9, 10, 11]), 1);
+  assert.equal(seasonFit(12, [9, 10, 11]), 0.5, "the month after");
+  assert.equal(seasonFit(1, [10, 11, 12]), 0.5, "across the new year");
+  assert.ok(seasonFit(4, [9, 10, 11]) < 0.5, "far off");
+  assert.ok(seasonFit(4, [9, 10, 11]) > 0, "but not impossible");
+});
+
+/** A month of damp, mild days ending on `last`: the general index is high. */
+function goodSeries(last, soilTemp = 14) {
+  const n = 40;
+  return Array.from({ length: n }, (_, i) => ({
+    date: addDays(last, i - n + 1),
+    precip: n - 1 - i >= 12 && n - 1 - i <= 15 ? 8 : 0,
+    tmin: 8,
+    soilTemp,
+    soilTempFit: null,
+    moisture: 0.26,
+    moistureDeep: 0.33,
+  }));
+}
+
+const cepe = { id: "cepe", soil_temp: { dead: 8, min: 11, max: 16, hot: 21 }, season: [8, 9, 10, 11] };
+
+test("a species with no host scores nothing, whatever the weather", () => {
+  const series = goodSeries("2026-10-15");
+  assert.equal(speciesIndex(series, series.length - 1, cepe, 0).score, 0);
+});
+
+test("host share and season weigh the species index down, never up", () => {
+  const series = goodSeries("2026-10-15");
+  const i = series.length - 1;
+  const full = speciesIndex(series, i, cepe, 1);
+  assert.ok(full.score > 50, `good weather, full host, in season (${full.score})`);
+  assert.ok(full.score <= full.weather, "never above the weather alone");
+  assert.ok(speciesIndex(series, i, cepe, 0.2).score < full.score, "fewer hosts, lower");
+  const spring = goodSeries("2026-04-15");
+  assert.ok(speciesIndex(spring, i, cepe, 1).score < full.score, "off season, lower");
+});
+
+test("the species' own thermal window is the one applied", () => {
+  const series = goodSeries("2026-10-15", 23); // too warm for the cèpe, fine for a warm species
+  const i = series.length - 1;
+  const warm = { ...cepe, soil_temp: { dead: 12, min: 16, max: 24, hot: 28 } };
+  assert.equal(speciesIndex(series, i, cepe, 1).score, 0);
+  assert.ok(speciesIndex(series, i, warm, 1).score > 0);
+});
+
+test("a forest of unknown composition gets no answer rather than zeros", () => {
+  const table = { species: [cepe] };
+  assert.equal(speciesFor({ hosts: null, series: goodSeries("2026-10-15") }, table, 39), null);
+  const rows = speciesFor({ hosts: { cepe: 0.8 }, series: goodSeries("2026-10-15") }, table, 39);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].species.id, "cepe");
 });

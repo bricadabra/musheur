@@ -11,13 +11,15 @@
  */
 
 import { esc, num } from "./html.js";
-import { t, locale } from "./i18n.js";
+import { t, locale, getLang } from "./i18n.js";
 import { limiting, detectTriggers } from "./score.js";
 import { scoreChart, seriesChart } from "./charts.js";
 import { departmentName } from "./departments.js";
 import { entryFor, trajectoryFor, forestById, state, TODAY_INDEX, CHART_FROM } from "./state.js";
 import { isFavourite } from "./store.js";
 import { flushText } from "./list.js";
+import { speciesTable } from "./data.js";
+import { speciesFor } from "./species.js";
 
 const date = (iso) =>
   new Date(`${iso}T12:00:00`).toLocaleDateString(locale(), { day: "numeric", month: "short" });
@@ -113,6 +115,62 @@ function trend(forest) {
   return `<p class="mt-2 text-sm text-faint">${esc(bits.join(", "))}</p>`;
 }
 
+/** Mean slope and the way the forest faces, in words rather than a cosine. */
+function relief(forest) {
+  if (forest.slope_deg == null) return "";
+  const n = forest.northness;
+  const facing = n == null ? "" : n > 0.2 ? "aspect.north" : n < -0.2 ? "aspect.south" : "aspect.none";
+  return (
+    fact(t("detail.slope"), num(forest.slope_deg, 0, "°", locale())) +
+    (facing ? fact(t("detail.aspect"), t(facing)) : "")
+  );
+}
+
+/**
+ * Conditions per mushroom species, laid out like the stand above it: one line
+ * per species with its index for the chosen day, and under it the share of
+ * host trees and the dangerous lookalikes. A generic estimate drawn from the
+ * stand, and said so in one line; the warning at the foot of the sheet covers
+ * the rest.
+ */
+function mushrooms(forest) {
+  const table = speciesTable();
+  if (!table || forest.hosts === undefined) return "";
+  const rows = speciesFor(forest, table, TODAY_INDEX + state.dayOffset);
+  if (rows === null) return `<p class="text-sm text-faint">${t("mushrooms.unknown")}</p>`;
+  if (!rows.length) return `<p class="text-sm text-faint">${t("mushrooms.none")}</p>`;
+  const lang = getLang();
+
+  return (
+    `<div data-species>` +
+    `<p class="mb-3 text-[0.8125rem] text-faint">${t("mushrooms.note")}</p>` +
+    `<ul class="space-y-2.5 text-[0.9375rem]">` +
+    rows
+      .map(
+        ({ species: sp, score, host, season }) =>
+          `<li data-species-row>` +
+          `<div class="flex justify-between gap-3">` +
+          `<span>${esc(sp.name[lang] ?? sp.name.fr)} ` +
+          `<span class="text-[0.8125rem] italic text-faint">${esc(sp.latin)}</span></span>` +
+          `<span class="tnum">${score}</span></div>` +
+          `<p class="text-[0.8125rem] text-faint">` +
+          t("mushrooms.hosts", { pct: Math.round(host * 100) }) +
+          (season < 1 ? ` · ${t("mushrooms.offSeason")}` : "") +
+          ` · ${t("mushrooms.lookalikes")} ` +
+          sp.lookalikes
+            .map((l) => {
+              const danger = t(`danger.${l.danger}`);
+              const tone = l.danger === "deadly" || l.danger === "toxic" ? "text-band-poor" : "";
+              return `${esc(l.fr)} (<span class="${tone}">${danger}</span>)`;
+            })
+            .join(", ") +
+          `</p></li>`,
+      )
+      .join("") +
+    `</ul></div>`
+  );
+}
+
 const fact = (label, value) =>
   `<div class="flex justify-between gap-3 py-1">` +
   `<dt class="text-soft">${label}</dt><dd class="tnum">${value}</dd></div>`;
@@ -175,12 +233,14 @@ export function detailHTML(id) {
 
     section(t("detail.triggers"), triggers(forest)) +
     section(t("detail.composition"), composition(forest)) +
+    section(t("detail.mushrooms"), mushrooms(forest)) +
 
     section(
       t("detail.terrain"),
       `<dl class="text-[0.9375rem]">` +
         fact(t("detail.area"), num(forest.area_ha, 0, "ha", locale())) +
         fact(t("detail.elevation"), forest.elevation_m == null ? "–" : num(forest.elevation_m, 0, "m", locale())) +
+        relief(forest) +
         fact(t("detail.edge"), num(forest.edge_m_per_ha, 1, "m/ha", locale())) +
         `</dl>`,
     ) +

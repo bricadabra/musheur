@@ -80,3 +80,18 @@ export async function loadDepartment(code) {
   }
   return departments.get(code);
 }
+
+/**
+ * The species knowledge table, for the enthusiasts' section of the sheet.
+ *
+ * Loaded once, in the background: the rest of the application does not wait
+ * for it, and when it cannot be had the section simply does not appear.
+ */
+let species = null;
+
+export async function loadSpecies() {
+  species ??= await getJSON(`${ROOT}/species.json`);
+  return species;
+}
+
+export const speciesTable = () => species;

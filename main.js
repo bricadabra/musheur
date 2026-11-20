@@ -22,7 +22,7 @@ import "@fontsource-variable/manrope/wght.css";
 import "./app.css";
 
 import { initI18n, applyStatic, setLang, getLang, onLangChange, t, locale } from "./src/i18n.js";
-import { loadManifest, departmentCodes, departmentCount, departmentBBox } from "./src/data.js";
+import { loadManifest, loadSpecies, departmentCodes, departmentCount, departmentBBox } from "./src/data.js";
 import { departmentName } from "./src/departments.js";
 import { initMap, onForestClick, paint, fitBBox, flyTo, view, mapReady } from "./src/map.js";
 import {
@@ -304,6 +304,10 @@ async function start() {
   });
 
   onRender(draw);
+
+  // The species table is for the sheet only: nothing waits for it, and a sheet
+  // already open gains its section when it arrives.
+  loadSpecies().then(render, () => {});
 
   try {
     await loadManifest();

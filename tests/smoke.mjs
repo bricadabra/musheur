@@ -199,6 +199,13 @@ try {
   check(verdict && verdict.width > 20 && verdict.height > 20, "the verdict shows the index at size");
   check(verdict && !verdict.overlaps, "the verdict is not hidden under the panel header");
 
+  // The mushroom section: every line names its dangerous lookalikes.
+  const lines = await page.$$eval("[data-species-row]", (els) =>
+    els.map((el) => /:\s*[^:(]+\(/.test(el.textContent)),
+  );
+  check(lines.length > 0, `the sheet lists mushroom species (${lines.length})`);
+  check(lines.every(Boolean), "every species line names its lookalikes");
+
   await page.click('[data-day="3"]');
   await new Promise((r) => setTimeout(r, 500));
   check(
