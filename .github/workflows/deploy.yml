@@ -29,27 +29,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # pnpm first, so setup-node can cache its store. The version comes from
+      # `packageManager` in package.json, the same one used locally.
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: npm
+          node-version: '22'
+          cache: pnpm
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
-      # The model, the grid grouping, and the datasets against their own
-      # manifest. No network, about a second.
+      # The model and the reading of the weather file. No network, under a
+      # second.
       #
-      # `npm run test:smoke` drives the built site in a real browser and is the
+      # `pnpm test:smoke` drives the built site in a real browser and is the
       # only thing that catches a rule that hides a block, a control another
       # element sits on top of, or a chart that paints nothing. It is run by
       # hand rather than here: it needs Chrome and it is timing-sensitive, and a
       # check that goes red for reasons unrelated to the change teaches people
       # to ignore it.
-      - name: Unit and data checks
-        run: npm test
+      - name: Unit checks
+        run: pnpm test
 
       - name: Build
-        run: npm run build
+        run: pnpm build
 
       # Published straight from the job that checked it. Rebuilding in `deploy`
       # would publish something no test has seen.

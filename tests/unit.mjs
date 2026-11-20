@@ -1,63 +1,90 @@
 /**
  * The pure logic, checked without a network.
  *
- * The smoke test needs a browser, a built site and a weather service with quota
- * left. These need none of that, so they run in a second and they run when
- * Open-Meteo is busy — which is exactly when a mistake in the model would
- * otherwise go unnoticed.
+ * The smoke test needs a browser, a built site and the published data. These
+ * need none of that, so they run in a second, on any machine, offline.
  *
- *   npm test
+ *   pnpm test
  */
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { groupByCell } from "../src/weather.js";
+import { windowDates, blocksFor, PAST_DAYS, FORECAST_DAYS } from "../src/weather.js";
 import {
   MODEL, OPTIMIST, ramp, trapezoid, band, BANDS, scoreForDay, detectTriggers, expectedFlush, addDays,
 } from "../src/score.js";
 
-// ------------------------------------------------------------- grid grouping
+// ------------------------------------------------------------- weather file
 
-test("points in one cell are asked for once", () => {
-  const points = [
-    { lat: 48.2, lon: -1.55 },
-    { lat: 48.21, lon: -1.56 }, // ~1.3 km away: same cell
-    { lat: 49.0, lon: -1.55 }, // far: its own cell
-  ];
-  const { ask, index } = groupByCell(points, 0.03);
-  assert.equal(ask.length, 2, "two cells for three points");
-  assert.equal(index[0], index[1], "neighbours share a block");
-  assert.notEqual(index[0], index[2], "distant points do not");
+test("the window puts today right after the past days", () => {
+  const days = windowDates("2026-11-20");
+  assert.equal(days.length, PAST_DAYS + FORECAST_DAYS);
+  assert.equal(days[PAST_DAYS], "2026-11-20");
+  assert.equal(days[PAST_DAYS - 1], "2026-11-19");
+  assert.equal(days.at(-1), "2026-11-26");
 });
 
-test("every point keeps a block, and the blocks exist", () => {
-  const points = Array.from({ length: 50 }, (_, i) => ({
-    lat: 47 + i * 0.011,
-    lon: 2 + i * 0.007,
-  }));
-  const { ask, index } = groupByCell(points, 0.03);
-  assert.equal(index.length, points.length);
-  for (const i of index) assert.ok(i >= 0 && i < ask.length, "index points at a real block");
+test("the window crosses a daylight-saving change without skipping a day", () => {
+  const days = windowDates("2026-11-01"); // the clocks went back on 25 October
+  assert.ok(days.includes("2026-10-25") && days.includes("2026-10-26"));
+  assert.equal(new Set(days).size, days.length, "no day twice");
 });
 
-test("the point standing in for a cell is one of the points in it", () => {
-  const points = [
-    { lat: 48.2, lon: -1.55 },
-    { lat: 48.205, lon: -1.552 },
-  ];
-  const { ask, index } = groupByCell(points, 0.03);
-  assert.equal(ask.length, 1);
-  assert.deepEqual(ask[index[0]], { lat: 48.2, lon: -1.55 });
+/** `n` dates from `first`. */
+const daysFrom = (first, n) =>
+  Array.from({ length: n }, (_, i) => {
+    const d = new Date(`${first}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+
+/** A file whose days run from `first`, one value per day: its own day of month. */
+function file(first, n) {
+  const daily = daysFrom(first, n);
+  return {
+    generated: `${first}T04:00:00Z`,
+    time: { daily, hourly: daily.map((d) => `${d}T00:00`) },
+    forests: { a: "48.1,-1.6", b: "48.1,-1.6", c: "48.2,-1.7" },
+    cells: {
+      "48.1,-1.6": {
+        daily: { precipitation_sum: daily.map((d) => Number(d.slice(8))) },
+        hourly: { soil_moisture_3_to_9cm: daily.map(() => 0.2) },
+      },
+      "48.2,-1.7": {
+        daily: { precipitation_sum: daily.map(() => 0) },
+        hourly: { soil_moisture_3_to_9cm: daily.map(() => 0.3) },
+      },
+    },
+  };
+}
+
+test("a fresh file lands today at PAST_DAYS", () => {
+  const today = "2026-11-20";
+  const f = file(windowDates(today)[0], PAST_DAYS + FORECAST_DAYS);
+  const [a] = blocksFor(f, [{ id: "a" }], today);
+  assert.equal(a.daily.time[PAST_DAYS], today);
+  assert.equal(a.daily.precipitation_sum[PAST_DAYS], 20);
 });
 
-test("a finer grid merges less", () => {
-  const points = [
-    { lat: 48.2, lon: -1.55 },
-    { lat: 48.22, lon: -1.55 },
-  ];
-  assert.equal(groupByCell(points, 0.05).ask.length, 1);
-  assert.equal(groupByCell(points, 0.005).ask.length, 2);
+test("a file a day late shifts by one and loses its last forecast day", () => {
+  const today = "2026-11-20";
+  const f = file(windowDates("2026-11-19")[0], PAST_DAYS + FORECAST_DAYS);
+  const [a] = blocksFor(f, [{ id: "a" }], today);
+  assert.equal(a.daily.time[PAST_DAYS], today, "today stays where the views expect it");
+  assert.equal(a.daily.precipitation_sum[PAST_DAYS], 20, "and carries today's value");
+  assert.equal(a.daily.precipitation_sum.at(-1), null, "the day the file never had is missing");
+});
+
+test("forests share their cell's block, and an unknown forest gets an empty one", () => {
+  const today = "2026-11-20";
+  const f = file(windowDates(today)[0], PAST_DAYS + FORECAST_DAYS);
+  const [a, b, c, x] = blocksFor(f, [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "x" }], today);
+  assert.equal(a, b, "same cell, same block");
+  assert.notEqual(a, c);
+  assert.equal(c.hourly.soil_moisture_3_to_9cm[0], 0.3);
+  assert.equal(x.daily.time.length, PAST_DAYS + FORECAST_DAYS);
+  assert.equal(x.daily.precipitation_sum, undefined, "no values for a forest the file lacks");
 });
 
 // ------------------------------------------------------------------ the model

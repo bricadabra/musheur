@@ -2,18 +2,23 @@
 
 Where and when to go mushroom foraging in France's public forests: a 0–100
 index per forest, today to six days out, from rain, soil moisture and soil
-temperature. No account, no server.
+temperature. No account, no server: the data, weather included, is static
+files refreshed every day in
+[musheur-cdn](https://github.com/bricadabra/musheur-cdn).
 
 **→ <https://bricadabra.github.io/musheur/>** · a [Bricadabra](https://github.com/bricadabra) project
 
 ## Run it
 
 ```bash
-npm install
-npm run dev     # http://localhost:3000
-npm test
-npm run build
+pnpm install
+pnpm dev        # http://localhost:3000
+pnpm test
+pnpm build
 ```
+
+`VITE_CDN=http://localhost:4000 pnpm dev` reads the data from a local copy
+instead of the published one.
 
 Push to `main` publishes to GitHub Pages.
 
@@ -28,4 +33,6 @@ mycological society.
 
 ## Licence
 
-MIT for the code. Datasets keep their own licences, credited on the map.
+MIT for the code. Data keeps its own licences, credited on the map: ONF and
+IGN (Licence Ouverte 2.0), weather by [Open-Meteo](https://open-meteo.com/)
+(CC BY 4.0).

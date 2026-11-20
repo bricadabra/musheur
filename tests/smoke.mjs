@@ -1,31 +1,36 @@
 /**
  * What no unit test sees: does the application actually run in a browser?
  *
- * It loads the built site, picks a department, waits for the real Open-Meteo
- * round trip, opens a forest and switches day and language. It catches the
- * things that only show up for real — a MapLibre paint expression the style
- * parser rejects, a module that throws on import, a chart that paints nothing.
+ * It loads the built site, picks a department, opens a forest and switches day
+ * and language. It catches the things that only show up for real — a MapLibre
+ * paint expression the style parser rejects, a module that throws on import, a
+ * chart that paints nothing.
+ *
+ * Outlines and indicators come from the CDN for real; the weather file of the
+ * department under test is answered by tests/fixture.mjs, so the index it
+ * should produce is known.
  *
  * It skips itself cleanly when puppeteer-core or Chrome is absent, because it
  * is a useful check and not a gate.
  *
- *   npm run build && npm run preview &
- *   npm run test:smoke
+ *   pnpm build && pnpm preview &
+ *   pnpm test:smoke
  */
 
 const URL = process.env.SMOKE_URL || "http://localhost:4173/musheur/";
 const CHROME = process.env.CHROME_PATH || "/usr/bin/google-chrome-stable";
 const DEPT = process.env.SMOKE_DEPT || "35";
-// SMOKE_LIVE=1 calls Open-Meteo for real instead of seeding the cache. Worth
-// running by hand now and then — it is the only thing that checks the answer
-// still has the shape the model reads — but not on every commit, against a
-// free service, from a shared address.
+// SMOKE_LIVE=1 reads the published weather instead of the made-up one: the
+// only check that the published file still has the shape the model reads.
 const LIVE = process.env.SMOKE_LIVE === "1";
+// Where the site under test reads its data, if not the published CDN
+// (VITE_CDN at build time).
+const CDN = process.env.VITE_CDN || "https://bricadabra.github.io/musheur-cdn";
 
-const { departmentCache } = await import("./fixture.mjs");
-const seed = LIVE ? null : departmentCache(DEPT);
+const { weatherFile } = await import("./fixture.mjs");
+const fixture = LIVE ? null : JSON.stringify(await weatherFile(DEPT, CDN));
 // The index the fixture produces. Asserting the number rather than "more than
-// forty" is the whole point of not calling a live service.
+// forty" is the whole point of not reading live weather.
 const EXPECTED_TODAY = 83;
 
 let puppeteer;
@@ -45,11 +50,6 @@ if (!existsSync(CHROME)) {
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: "new",
-  // A profile that survives between runs, so the application's own weather
-  // cache does too. Open-Meteo is free and metered per point; a test that
-  // re-fetched two hundred forests on every run would be both slow and rude,
-  // and would spend the quota a real visitor needs.
-  userDataDir: process.env.SMOKE_PROFILE || `${process.env.TMPDIR || "/tmp"}/musheur-smoke-profile`,
   // Headless Chrome has no GPU; without this MapLibre cannot get a context.
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--enable-unsafe-swiftshader"],
 });
@@ -60,8 +60,39 @@ const check = (ok, what) => {
   if (!ok) problems.push(what);
 };
 
-try {
+/**
+ * A page that starts with no preferences, so a run never inherits the last
+ * one's follow list, and whose weather for DEPT is the fixture.
+ */
+async function preparedPage() {
   const page = await browser.newPage();
+  await page.evaluateOnNewDocument(() => {
+    try {
+      localStorage.removeItem("musheur.prefs");
+    } catch {
+      /* storage blocked */
+    }
+  });
+  if (fixture) {
+    await page.setRequestInterception(true);
+    page.on("request", (request) => {
+      if (request.url().endsWith(`/weather/${DEPT}.json`)) {
+        request.respond({
+          status: 200,
+          contentType: "application/json",
+          headers: { "Access-Control-Allow-Origin": "*" },
+          body: fixture,
+        });
+      } else {
+        request.continue();
+      }
+    });
+  }
+  return page;
+}
+
+try {
+  const page = await preparedPage();
   // Pinned on purpose. The default 800x600 is what caught a centred header
   // control overlapping the mode buttons and swallowing their clicks, so the
   // widths this runs at are now a choice rather than a default.
@@ -70,26 +101,6 @@ try {
   page.on("console", (m) => {
     if (m.type() === "error") problems.push(`console error: ${m.text().slice(0, 160)}`);
   });
-
-  // Preferences are cleared so a run never inherits the last one's follow list.
-  // The weather cache is seeded, or — in live mode — cleared, because the
-  // profile persists between runs and a live run that reuses a seeded cache is
-  // not a live run at all.
-  await page.evaluateOnNewDocument(
-    (entry) => {
-      try {
-        localStorage.removeItem("musheur.prefs");
-        if (entry) {
-          localStorage.setItem("musheur.conditions.v3", JSON.stringify({ [entry.key]: entry.value }));
-        } else {
-          localStorage.removeItem("musheur.conditions.v3");
-        }
-      } catch {
-        /* storage blocked: the run will fall back to the network */
-      }
-    },
-    seed,
-  );
 
   await page.goto(URL, { waitUntil: "networkidle2", timeout: 60000 });
 
@@ -101,32 +112,9 @@ try {
   check((await page.$$("canvas")).length === 1, "the map has a rendering context");
 
   await page.select("#dept", DEPT);
-
-  /**
-   * Wait for forests. In live mode, tell a spent quota apart from a broken
-   * application: when Open-Meteo's ceiling is reached the application is
-   * behaving correctly by asking, so the checks that need weather are skipped
-   * with a word about why. Seeded, that path never runs.
-   */
-  const settled = await page.waitForFunction(
-    () => {
-      if (document.querySelectorAll("[data-forest]").length > 0) return "ready";
-      const s = window.__musheur?.state.status;
-      return s === "blocked" ? "blocked" : false;
-    },
-    { timeout: 200000 },
-  ).then((h) => h.jsonValue());
-
-  if (settled === "blocked") {
-    const scope = await page.evaluate(() => window.__musheur.state.quota);
-    check(
-      await page.$("#retryBtn") !== null,
-      `Open-Meteo ${scope} quota is spent — the application says so and offers a retry`,
-    );
-    console.log("\nskip: the weather-dependent checks need quota that is currently spent");
-    await browser.close();
-    process.exit(problems.length ? 1 : 0);
-  }
+  await page.waitForSelector("[data-forest]", { timeout: 60000 });
+  const weatherAt = await page.$eval("[data-weather-at]", (e) => e.textContent).catch(() => "");
+  check(/\d/.test(weatherAt), `the date of the weather is shown (${weatherAt.trim()})`);
 
   const rows = await page.$$eval("[data-forest]", (els) =>
     els.map((el) => ({
@@ -163,8 +151,8 @@ try {
     );
   }
 
-  // Choosing a department must move the map onto it. With the weather cache
-  // seeded the ranking can appear before MapLibre has finished starting, so
+  // Choosing a department must move the map onto it. With the weather served
+  // locally the ranking can appear before MapLibre has finished starting, so
   // wait for the engine — the application remembers the frame and applies it on
   // load, and that is what is being checked.
   await page.waitForFunction(() => window.__musheur?.mapReady(), { timeout: 60000 });
@@ -290,19 +278,8 @@ try {
   // Waiting for readiness first, as the checks above do, would never exercise
   // it — so here the selection happens as early as the page allows.
   {
-    const fresh = await browser.newPage();
+    const fresh = await preparedPage();
     await fresh.setViewport({ width: 1280, height: 900 });
-    await fresh.evaluateOnNewDocument(
-      (entry) => {
-        try {
-          localStorage.removeItem("musheur.prefs");
-          if (entry) localStorage.setItem("musheur.conditions.v3", JSON.stringify({ [entry.key]: entry.value }));
-        } catch {
-          /* storage blocked */
-        }
-      },
-      seed,
-    );
     await fresh.goto(URL, { waitUntil: "domcontentloaded", timeout: 60000 });
     await fresh.waitForSelector("#dept option[value='" + DEPT + "']", { timeout: 30000 });
     const early = await fresh.evaluate(() => !window.__musheur?.mapReady());

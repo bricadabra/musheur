@@ -27,10 +27,10 @@ import { departmentName } from "./src/departments.js";
 import { initMap, onForestClick, paint, fitBBox, flyTo, view, mapReady } from "./src/map.js";
 import {
   state, onRender, render, selectDepartment, loadFollowed, noteDepartment,
-  setDay, setSelected, setIndex, visibleForests, bandOf, forestById, retry, FORECAST_DAYS, TODAY_INDEX,
+  setDay, setSelected, setIndex, visibleForests, bandOf, forestById, FORECAST_DAYS, TODAY_INDEX,
 } from "./src/state.js";
 import { getPrefs, setPrefs, toggleFavourite, isFavourite } from "./src/store.js";
-import { listHTML, waitBody, indexToggleHTML } from "./src/list.js";
+import { listHTML, indexToggleHTML, weatherLineHTML } from "./src/list.js";
 import { boardHTML } from "./src/board.js";
 import { detailHTML } from "./src/detail.js";
 
@@ -200,7 +200,7 @@ function draw() {
   // page would find both.
   $("#board").innerHTML = following ? boardHTML() : "";
   $("#list").innerHTML = following ? "" : listHTML();
-  $("#indexToggle").innerHTML = following ? "" : indexToggleHTML();
+  $("#indexToggle").innerHTML = following ? "" : indexToggleHTML() + weatherLineHTML();
 
   const detail = $("#detail");
   detail.innerHTML = state.selected ? detailHTML(state.selected) : "";
@@ -250,7 +250,7 @@ async function start() {
   });
 
   // Move the map first, then load. The extent comes from the manifest, so the
-  // frame is right before the weather request has even gone out.
+  // frame is right before the department has even loaded.
   $("#dept").addEventListener("change", (e) => {
     fitBBox(departmentBBox(e.target.value));
     selectDepartment(e.target.value);
@@ -280,12 +280,8 @@ async function start() {
     select(row.dataset.id);
     if (state.mode === "browse") flyTo(forestById(row.dataset.id));
   };
-  const clicked = (e) => {
-    if (e.target.closest("#retryBtn")) return retry();
-    selectFrom(e);
-  };
-  $("#list").addEventListener("click", clicked);
-  $("#board").addEventListener("click", clicked);
+  $("#list").addEventListener("click", selectFrom);
+  $("#board").addEventListener("click", selectFrom);
   $("#detail").addEventListener("click", (e) => {
     const fav = e.target.closest("#favBtn");
     if (fav) {
@@ -308,13 +304,6 @@ async function start() {
   });
 
   onRender(draw);
-
-  // The countdown ticks without redrawing the screen around it: only the
-  // sentence changes, so only the sentence is rewritten.
-  setInterval(() => {
-    if (state.status !== "waiting") return;
-    document.querySelectorAll("[data-wait]").forEach((el) => (el.textContent = waitBody()));
-  }, 1000);
 
   try {
     await loadManifest();

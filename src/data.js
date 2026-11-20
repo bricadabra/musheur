@@ -1,31 +1,37 @@
 /**
- * The static side of the data, produced by a separate data pipeline.
+ * Where the data comes from: bricadabra/musheur-cdn, served by GitHub Pages
+ * next to the application (same origin in production, so no CORS question),
+ * produced by a separate pipeline and refreshed every day for the weather.
+ * `VITE_CDN` points elsewhere, e.g. a local copy:
+ *
+ *   VITE_CDN=http://localhost:4000 pnpm dev
  *
  * Two layers that join on `id`, and never mix:
  *
- *   data/forests.pmtiles         the outlines, as vector tiles. The map reads
- *                                them by HTTP range request and only ever
- *                                fetches the tiles on screen.
- *   data/indicators/<dept>.json  everything measurable about each forest,
- *                                indexed by id, one file per department.
+ *   forests.pmtiles         the outlines, as vector tiles. The map reads
+ *                           them by HTTP range request and only ever
+ *                           fetches the tiles on screen.
+ *   indicators/<dept>.json  everything measurable about each forest,
+ *                           indexed by id, one file per department.
  *
  * That split is why picking a department costs one small fetch instead of a
  * national download, and why colouring the map by a different indicator never
  * reloads a single outline.
  *
- * `data/manifest.json` describes the fields, the sources and the departments;
- * it is the only file the application has to know the name of.
+ * `manifest.json` describes the fields, the sources and the departments.
+ * `weather/<dept>.json` is read by weather.js.
  */
 
-const ROOT = `${import.meta.env.BASE_URL}data`;
+export const CDN = import.meta.env?.VITE_CDN ?? "https://bricadabra.github.io/musheur-cdn";
+const ROOT = CDN;
 
 export const TILES_URL = `${ROOT}/forests.pmtiles`;
 
 let manifest = null;
 const departments = new Map(); // dept code -> { id -> indicators }
 
-async function getJSON(url) {
-  const response = await fetch(url);
+export async function getJSON(url, { signal } = {}) {
+  const response = await fetch(url, { signal });
   if (!response.ok) throw new Error(`${url} → HTTP ${response.status}`);
   return response.json();
 }

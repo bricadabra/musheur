@@ -17,6 +17,7 @@ import { limiting } from "./score.js";
 import { sparkline } from "./charts.js";
 import { state, visibleForests, entryFor, bandOf, flushFor, TODAY_INDEX, CHART_FROM } from "./state.js";
 import { getPrefs } from "./store.js";
+import { STALE_MS } from "./weather.js";
 
 const shortDate = (iso) =>
   new Date(`${iso}T12:00:00`).toLocaleDateString(locale(), { day: "numeric", month: "short" });
@@ -84,41 +85,34 @@ function row(forest) {
 }
 
 /**
- * What a spent quota looks like on screen.
+ * When the weather on screen was produced, and by whom.
  *
- * A per-minute ceiling is something the application waits out by itself, so it
- * shows a countdown and says nothing else. An hourly or daily one is not worth
- * spinning on, so it explains what happened and hands back a button.
+ * The weather is fetched once a day upstream, so a reader deserves to know
+ * which day; past STALE_MS it says so in the warning colour, because a late
+ * forecast still reads like a fresh one. The credit is the licence's due
+ * (Open-Meteo, CC BY 4.0) and sits here so the board, which has no map and so
+ * no attribution control, carries it too.
  */
-export function quotaHTML() {
-  const waiting = state.status === "waiting";
-  const scope = state.quota === "daily" ? "daily" : "hourly";
+export function weatherLineHTML() {
+  if (!state.weatherAt) return "";
+  const at = new Date(state.weatherAt);
+  const late = Date.now() - at.getTime() > STALE_MS;
+  const date = at.toLocaleDateString(locale(), {
+    day: "numeric", month: "long", timeZone: "Europe/Paris",
+  });
   return (
-    `<div class="px-4 py-5">` +
-    `<p class="text-[0.9375rem] font-semibold">` +
-    `${waiting ? t("wait.title") : t(`blocked.${scope}`)}</p>` +
-    `<p data-wait class="mt-2 text-sm leading-relaxed text-soft">` +
-    `${waiting ? waitBody() : t(`blocked.${scope}Body`)}</p>` +
-    (waiting
-      ? ""
-      : `<button id="retryBtn" class="mt-3 rounded-md border border-primary px-3 py-1.5 ` +
-        `text-sm font-semibold text-primary hover:bg-primary/10">${t("blocked.retry")}</button>`) +
-    `</div>`
+    `<p data-weather-at class="mt-2.5 text-xs ${late ? "text-band-poor" : "text-faint"}">` +
+    `${t(late ? "weather.late" : "weather.asOf", { date })} · ` +
+    `<a href="https://open-meteo.com/" target="_blank" rel="noopener" ` +
+    `class="underline decoration-dotted hover:text-text">Open-Meteo</a></p>`
   );
 }
-
-/** Seconds left before the automatic retry, as a sentence. */
-export const waitBody = () => {
-  const left = Math.max(0, Math.ceil((state.retryAt - Date.now()) / 1000));
-  return left > 0 ? t("wait.body", { n: left }) : t("wait.soon");
-};
 
 const notice = (text, tone = "text-soft") =>
   `<p class="px-4 py-5 text-sm leading-relaxed ${tone}">${text}</p>`;
 
 export function listHTML() {
   if (state.status === "loading") return notice(t("panel.loading"));
-  if (state.status === "waiting" || state.status === "blocked") return quotaHTML();
   if (state.status === "error")
     return notice(esc(t("error.data", { reason: state.error })), "text-band-poor");
   if (state.status === "idle") return notice(t("panel.pickDepartment"));

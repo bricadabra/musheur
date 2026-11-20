@@ -75,7 +75,8 @@ export async function initMap(container, { bounds } = {}) {
     url: `pmtiles://${TILES_URL}`,
     // Feature state needs a stable feature id, and ours is the ONF id.
     promoteId: { [SOURCE_LAYER]: "id" },
-    attribution: "Forests &copy; ONF / IGN",
+    attribution:
+      'Forests &copy; ONF / IGN · Weather <a href="https://open-meteo.com/">Open-Meteo</a> (CC BY 4.0)',
   };
   style.layers.push(
     {
@@ -195,8 +196,8 @@ export function paint(forests, bandOf, selected) {
  * Frame a department from the extent the pipeline measured for it.
  *
  * Preferred over fitting to the loaded forests: the extent is known before the
- * weather request returns, so the map moves the moment a department is chosen
- * rather than a few seconds later, and it frames the massifs themselves rather
+ * department loads, so the map moves the moment a department is chosen
+ * rather than after it, and it frames the massifs themselves rather
  * than the points that stand for them.
  */
 export function fitBBox(bbox, { padding = 48, animate = true } = {}) {

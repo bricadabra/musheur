@@ -12,13 +12,13 @@
  */
 
 import { loadDepartment } from "./data.js";
-import { fetchConditions, RateLimited, PAST_DAYS, FORECAST_DAYS, HISTORY_DAYS } from "./weather.js";
+import { loadWeather, blocksFor, PAST_DAYS, FORECAST_DAYS, HISTORY_DAYS } from "./weather.js";
 import { buildSeries, scoreSeries, trajectory, band, expectedFlush, MODELS } from "./score.js";
-import { getPrefs, setPrefs, readCache, writeCache, getLastSeen, rememberSeen } from "./store.js";
+import { getPrefs, setPrefs, getLastSeen, rememberSeen } from "./store.js";
 
 export { PAST_DAYS, FORECAST_DAYS, HISTORY_DAYS };
 
-// Today sits right after the past days Open-Meteo was asked for.
+// Today sits right after the past days of the weather window.
 export const TODAY_INDEX = PAST_DAYS;
 // Where the charts start: a month of history, and the forecast after it.
 export const CHART_FROM = TODAY_INDEX - HISTORY_DAYS;
@@ -27,20 +27,16 @@ export const state = {
   mode: getPrefs().mode ?? "browse",
   dept: null,
   forests: [],
-  status: "idle", // idle | loading | waiting | blocked | ready | error
+  status: "idle", // idle | loading | ready | error
   error: null,
-  retryAt: null, // epoch ms, while status is "waiting"
-  quota: null, // "minutely" | "hourly" | "daily", while waiting or blocked
+  weatherAt: null, // when the oldest weather on screen was produced, ISO time
   dayOffset: getPrefs().day ?? 0,
   selected: getPrefs().selected ?? null,
   changes: {}, // forest id -> { from, to } since the last visit, follow mode only
 };
 
-// One load at a time. Flicking through departments used to leave every request
-// in flight, each one spending quota on a result nobody would read.
+// One load at a time: a department picked while another loads replaces it.
 let inFlight = null;
-let retryTimer = null;
-let lastWork = null;
 
 const views = new Set();
 
@@ -49,31 +45,28 @@ export const render = () => views.forEach((fn) => fn());
 
 // ------------------------------------------------------------------ loading
 
-/**
- * Indicators plus weather for one department, cached for an hour.
- *
- * One Open-Meteo request covers a whole department — the API takes a list of
- * coordinates and answers with one block per point, so this is one round trip
- * rather than one per forest.
- */
+/** Indicators and weather for one department, fetched side by side. */
 async function scoredDepartment(code, signal) {
-  const forests = await loadDepartment(code);
-  const key = `${code}:${forests.length}`;
-  const cached = readCache(key);
-  const answer = cached?.series ?? (await fetchConditions(forests, { signal }));
-  if (!cached) writeCache(key, answer);
-  return forests.map((forest, i) => {
-    const series = buildSeries(answer.blocks[answer.index[i]]);
+  const [forests, weather] = await Promise.all([
+    loadDepartment(code),
+    loadWeather(code, { signal }),
+  ]);
+  const blocks = blocksFor(weather, forests);
+  const scored = forests.map((forest, i) => {
+    const series = buildSeries(blocks[i]);
     return { ...forest, dept: code, series, scores: scoreSeries(series, model()) };
   });
+  return { forests: scored, generated: weather.generated };
 }
+
+/** The oldest of the files on screen: that is the one a late warning is about. */
+const oldest = (loaded) => loaded.map((d) => d.generated).sort()[0] ?? null;
 
 const model = () => MODELS[getPrefs().index] ?? MODELS.cautious;
 
 /**
  * Switch between the cautious and the optimists' index. Both read the same
- * series, so this rescores what is loaded rather than asking for the weather
- * again.
+ * series, so this rescores what is loaded rather than fetching again.
  */
 export function setIndex(kind) {
   setPrefs({ index: kind });
@@ -81,22 +74,13 @@ export function setIndex(kind) {
   render();
 }
 
-/**
- * Run a load, turning a quota ceiling into a wait rather than a failure.
- *
- * Any load supersedes the one before it: the previous request is aborted and a
- * pending retry dropped, so changing your mind costs nothing.
- */
+/** Run a load. Any load supersedes the one before it, which is aborted. */
 async function run(work) {
   inFlight?.abort();
-  clearTimeout(retryTimer);
   const controller = (inFlight = new AbortController());
 
-  lastWork = work;
   state.status = "loading";
   state.error = null;
-  state.retryAt = null;
-  state.quota = null;
   render();
 
   try {
@@ -105,26 +89,10 @@ async function run(work) {
   } catch (error) {
     if (controller.signal.aborted) return; // superseded; the new load owns the state
     state.forests = [];
-    if (error instanceof RateLimited) {
-      state.quota = error.scope;
-      if (error.retryAfterMs > 0) {
-        state.status = "waiting";
-        state.retryAt = Date.now() + error.retryAfterMs;
-        retryTimer = setTimeout(() => run(work), error.retryAfterMs);
-      } else {
-        state.status = "blocked";
-      }
-    } else {
-      state.status = "error";
-      state.error = error.message || String(error);
-    }
+    state.status = "error";
+    state.error = error.message || String(error);
   }
   render();
-}
-
-/** Try the last load again, for the button a blocked quota puts on screen. */
-export function retry() {
-  if (lastWork) run(lastWork);
 }
 
 export async function selectDepartment(code) {
@@ -135,7 +103,9 @@ export async function selectDepartment(code) {
   state.changes = {};
   setPrefs({ mode: "browse", dept: code, selected: null });
   await run(async (signal) => {
-    state.forests = await scoredDepartment(code, signal);
+    const loaded = await scoredDepartment(code, signal);
+    state.forests = loaded.forests;
+    state.weatherAt = loaded.generated;
   });
 }
 
@@ -165,11 +135,9 @@ export async function loadFollowed() {
 
   await run(async (signal) => {
     const codes = [...new Set(wanted.map((id) => prefs.followDepts?.[id]).filter(Boolean))];
-    // In series, not in parallel: several departments at once is the surest way
-    // to trip the minutely quota, and the board is not worth a stampede.
-    const loaded = [];
-    for (const code of codes) loaded.push(await scoredDepartment(code, signal));
-    const byId = new Map(loaded.flat().map((f) => [f.id, f]));
+    const loaded = await Promise.all(codes.map((code) => scoredDepartment(code, signal)));
+    state.weatherAt = oldest(loaded);
+    const byId = new Map(loaded.flatMap((d) => d.forests).map((f) => [f.id, f]));
     state.forests = wanted.map((id) => byId.get(id)).filter(Boolean);
 
     // What changed since the last visit, before recording what is shown now.

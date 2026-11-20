@@ -20,7 +20,7 @@ import { limiting } from "./score.js";
 import { scoreChart } from "./charts.js";
 import { departmentName } from "./departments.js";
 import { state, visibleForests, entryFor, bandOf, TODAY_INDEX, CHART_FROM } from "./state.js";
-import { quotaHTML, flushText, indexToggleHTML } from "./list.js";
+import { flushText, indexToggleHTML, weatherLineHTML } from "./list.js";
 
 function change(id) {
   const c = state.changes[id];
@@ -75,13 +75,11 @@ function card(forest) {
 const notice = (title, body) =>
   `<div class="mx-auto max-w-md px-6 py-20 text-center">` +
   `<p class="text-xl font-semibold">${title}</p>` +
-  (body ? `<p data-wait class="mt-3 text-[0.9375rem] leading-relaxed text-soft">${body}</p>` : "") +
+  (body ? `<p class="mt-3 text-[0.9375rem] leading-relaxed text-soft">${body}</p>` : "") +
   `</div>`;
 
 export function boardHTML() {
   if (state.status === "loading") return notice(t("panel.followLoading"), "");
-  if (state.status === "waiting" || state.status === "blocked")
-    return `<div class="mx-auto max-w-md py-16">${quotaHTML()}</div>`;
   if (state.status === "error")
     return notice(t("error.data", { reason: state.error }), "");
   if (!state.forests.length) return notice(t("follow.emptyTitle"), t("panel.followEmpty"));
@@ -89,10 +87,11 @@ export function boardHTML() {
   const forests = visibleForests();
   return (
     `<div class="mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-7">` +
-    `<div class="mb-4 flex flex-wrap items-center justify-between gap-3">` +
+    `<div class="flex flex-wrap items-center justify-between gap-3">` +
     `<h2 class="text-sm text-soft">${t("follow.heading", { n: forests.length })}</h2>` +
     `${indexToggleHTML()}</div>` +
-    `<ul class="grid gap-4 md:grid-cols-2 md:gap-5">${forests.map(card).join("")}</ul>` +
+    weatherLineHTML() +
+    `<ul class="mt-4 grid gap-4 md:grid-cols-2 md:gap-5">${forests.map(card).join("")}</ul>` +
     `</div>`
   );
 }
