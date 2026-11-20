@@ -185,6 +185,8 @@
 /* The forecast is the same measurement from thinner evidence: same colour,
    dimmer — not a different colour, which would read as a different thing. */
 .bar.future { opacity: 0.45; }
+/* The day the figures are read for, so the number and its bar can be matched. */
+.pick { fill: var(--color-primary); opacity: 0.22; }
 
 .series-bar { fill: var(--color-rain); }
 .series-line { fill: none; stroke-width: 1.5; }

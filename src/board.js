@@ -19,8 +19,8 @@ import { t, locale } from "./i18n.js";
 import { limiting } from "./score.js";
 import { scoreChart } from "./charts.js";
 import { departmentName } from "./departments.js";
-import { state, visibleForests, entryFor, bandOf, TODAY_INDEX, CHART_FROM } from "./state.js";
-import { flushText, indexToggleHTML, weatherLineHTML } from "./list.js";
+import { state, visibleForests, entryFor, bandOf, dayIndex, TODAY_INDEX, CHART_FROM } from "./state.js";
+import { flushText, dayStripHTML, indexToggleHTML, weatherLineHTML } from "./list.js";
 
 function change(id) {
   const c = state.changes[id];
@@ -67,7 +67,7 @@ function card(forest) {
     // With no map to share the screen, a card can afford the whole chart rather
     // than a sparkline — the month behind and the week ahead is the answer to
     // "did anything move".
-    `<span data-spark class="block">${scoreChart(forest.scores, TODAY_INDEX, { from: CHART_FROM, height: 88 })}</span>` +
+    `<span data-spark class="block">${scoreChart(forest.scores, TODAY_INDEX, { from: CHART_FROM, height: 88, day: dayIndex() })}</span>` +
     `</button></li>`
   );
 }
@@ -87,6 +87,9 @@ export function boardHTML() {
   const forests = visibleForests();
   return (
     `<div class="mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-7">` +
+    // The day picked here drives every figure below, as it does in the rail: a
+    // board read on a phone has no other way to look at Saturday.
+    `<div class="mb-4 md:max-w-md">${dayStripHTML()}</div>` +
     `<div class="flex flex-wrap items-center justify-between gap-3">` +
     `<h2 class="text-sm text-soft">${t("follow.heading", { n: forests.length })}</h2>` +
     `${indexToggleHTML()}</div>` +

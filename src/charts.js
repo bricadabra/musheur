@@ -68,13 +68,20 @@ function chartWrap(svg, { now, left = "", right = "", unit = "" }) {
 }
 
 /**
+ * A column behind the day picked in the day strip, so the figure on screen can
+ * be found on the chart — a bar alone would vanish on a day scored zero.
+ */
+const pickColumn = (i, step, plot) =>
+  `<rect class="pick" x="${(i * step).toFixed(1)}" y="0" width="${step.toFixed(1)}" height="${plot}"/>`;
+
+/**
  * The index day by day.
  *
  * Days with no computable index — the first three weeks, which lack their own
  * incubation window — are simply absent. A measured zero still gets a visible
  * stub, so it reads as "no chance here" rather than "no data for this day".
  */
-export function scoreChart(scores, todayIndex, { height = 96, from = 0 } = {}) {
+export function scoreChart(scores, todayIndex, { height = 96, from = 0, day = todayIndex } = {}) {
   const slice = scores.slice(from);
   const today = todayIndex - from;
   const n = slice.length;
@@ -99,6 +106,7 @@ export function scoreChart(scores, todayIndex, { height = 96, from = 0 } = {}) {
     `<svg class="chart chart-score" viewBox="0 0 ${W} ${height}" preserveAspectRatio="none" role="img">` +
     axis(plot) +
     grid([30, 50, 70], y) +
+    pickColumn(day - from, step, plot) +
     bars +
     todayRule(today * step + step / 2, plot) +
     `</svg>`;
@@ -117,7 +125,7 @@ export function scoreChart(scores, todayIndex, { height = 96, from = 0 } = {}) {
  * glance at a row and a glance at the panel agree. No captions: at this size
  * they would be the chart.
  */
-export function sparkline(scores, todayIndex, { height = 30, from = 0 } = {}) {
+export function sparkline(scores, todayIndex, { height = 30, from = 0, day = todayIndex } = {}) {
   const slice = scores.slice(from);
   const today = todayIndex - from;
   const n = slice.length;
@@ -137,6 +145,7 @@ export function sparkline(scores, todayIndex, { height = 30, from = 0 } = {}) {
 
   return (
     `<svg class="chart chart-spark" viewBox="0 0 ${W} ${height}" preserveAspectRatio="none" role="img">` +
+    pickColumn(day - from, step, plot) +
     bars +
     todayRule(today * step + step / 2, plot) +
     `</svg>`

@@ -21,16 +21,16 @@
 import "@fontsource-variable/manrope/wght.css";
 import "./app.css";
 
-import { initI18n, applyStatic, setLang, getLang, onLangChange, t, locale } from "./src/i18n.js";
+import { initI18n, applyStatic, setLang, getLang, onLangChange, t } from "./src/i18n.js";
 import { loadManifest, loadSpecies, departmentCodes, departmentCount, departmentBBox } from "./src/data.js";
 import { departmentName } from "./src/departments.js";
 import { initMap, onForestClick, paint, fitBBox, flyTo, view, mapReady } from "./src/map.js";
 import {
   state, onRender, render, selectDepartment, loadFollowed, noteDepartment,
-  setDay, setSelected, setIndex, visibleForests, bandOf, forestById, FORECAST_DAYS, TODAY_INDEX,
+  setDay, setSelected, setIndex, visibleForests, bandOf, forestById, TODAY_INDEX,
 } from "./src/state.js";
 import { getPrefs, setPrefs, toggleFavourite, isFavourite } from "./src/store.js";
-import { listHTML, indexToggleHTML, weatherLineHTML } from "./src/list.js";
+import { listHTML, dayStripHTML, indexToggleHTML, weatherLineHTML } from "./src/list.js";
 import { boardHTML } from "./src/board.js";
 import { detailHTML } from "./src/detail.js";
 
@@ -57,31 +57,6 @@ function buildDepartments(codes) {
           `${c} ${departmentName(c)} — ${t("dept.forests", { n: departmentCount(c) })}</option>`,
       )
       .join("");
-}
-
-/**
- * The day strip, dated.
- *
- * "J+4" is arithmetic the reader has to do; a weekday and a date is the thing
- * they are actually planning around.
- */
-function buildDayStrip() {
-  const today = new Date();
-  $("#dayStrip").innerHTML = Array.from({ length: FORECAST_DAYS }, (_, i) => {
-    const day = new Date(today);
-    day.setDate(day.getDate() + i);
-    // Today gets a word rather than its weekday, because "is it worth going
-    // now" is a different question from "is it worth going on Sunday".
-    const dow =
-      i === 0
-        ? t("day.todayShort")
-        : day.toLocaleDateString(locale(), { weekday: "short" }).replace(".", "");
-    return (
-      `<button type="button" class="day-btn" data-day="${i}">` +
-      `<span class="dow">${dow}</span>` +
-      `<span class="dom">${day.getDate()}</span></button>`
-    );
-  }).join("");
 }
 
 function buildOwnership() {
@@ -200,6 +175,7 @@ function draw() {
   // page would find both.
   $("#board").innerHTML = following ? boardHTML() : "";
   $("#list").innerHTML = following ? "" : listHTML();
+  $("#dayStrip").innerHTML = following ? "" : dayStripHTML();
   $("#indexToggle").innerHTML = following ? "" : indexToggleHTML() + weatherLineHTML();
 
   const detail = $("#detail");
@@ -209,9 +185,6 @@ function draw() {
   // instead, which is what the responsive classes on it express.
   detail.classList.toggle("hidden", !state.selected);
 
-  $("#dayStrip")
-    .querySelectorAll("[data-day]")
-    .forEach((b) => b.classList.toggle("is-active", Number(b.dataset.day) === state.dayOffset));
   document
     .querySelectorAll(".mode-btn")
     .forEach((b) => b.classList.toggle("is-active", b.dataset.mode === state.mode));
@@ -228,7 +201,6 @@ function draw() {
 
 async function start() {
   initI18n();
-  buildDayStrip();
   buildOwnership();
   buildFilters();
   applyStatic();
@@ -243,8 +215,7 @@ async function start() {
   });
   onLangChange(() => {
     syncLang();
-    buildDayStrip();
-    buildOwnership();
+      buildOwnership();
     buildDepartments(departmentCodes());
     render();
   });
@@ -255,10 +226,6 @@ async function start() {
     fitBBox(departmentBBox(e.target.value));
     selectDepartment(e.target.value);
   });
-  $("#dayStrip").addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-day]");
-    if (btn) setDay(Number(btn.dataset.day));
-  });
   $("#ownership").addEventListener("change", () => {
     setPrefs({ ownership: [...$("#ownership").querySelectorAll("input:checked")].map((i) => i.value) });
     render();
@@ -266,11 +233,13 @@ async function start() {
   document.querySelectorAll(".mode-btn").forEach((btn) => {
     btn.addEventListener("click", () => setMode(btn.dataset.mode));
   });
-  // The index switch is drawn in the rail and on the board, so it is caught
-  // here rather than wired to either copy.
+  // The day strip and the index switch are drawn in the rail and on the board,
+  // so they are caught here rather than wired to either copy.
   document.addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-index]");
-    if (btn) setIndex(btn.dataset.index);
+    const day = e.target.closest("[data-day]");
+    if (day) setDay(Number(day.dataset.day));
+    const index = e.target.closest("[data-index]");
+    if (index) setIndex(index.dataset.index);
   });
 
   // The list, the board, the detail sheet and the map all select the same way.

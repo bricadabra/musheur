@@ -199,18 +199,22 @@ try {
   check(verdict && verdict.width > 20 && verdict.height > 20, "the verdict shows the index at size");
   check(verdict && !verdict.overlaps, "the verdict is not hidden under the panel header");
 
-  // The mushroom section: every line names its dangerous lookalikes.
+  // The mushroom section: every line carries a gauge of its index.
   const lines = await page.$$eval("[data-species-row]", (els) =>
-    els.map((el) => /:\s*[^:(]+\(/.test(el.textContent)),
+    els.map((el) => !!el.querySelector("[data-gauge]")),
   );
   check(lines.length > 0, `the sheet lists mushroom species (${lines.length})`);
-  check(lines.every(Boolean), "every species line names its lookalikes");
+  check(lines.every(Boolean), "every species line has its gauge");
 
-  await page.click('[data-day="3"]');
+  await page.click('#dayStrip [data-day="3"]');
   await new Promise((r) => setTimeout(r, 500));
   check(
-    await page.$eval('[data-day="3"]', (e) => e.classList.contains("is-active")),
+    await page.$eval('#dayStrip [data-day="3"]', (e) => e.classList.contains("is-active")),
     "the day strip switches day",
+  );
+  check(
+    (await page.$$eval("#detail .pick", (els) => els.length)) === 1,
+    "the sheet's chart marks the picked day",
   );
 
   // Following crosses departments, so it has to survive a reload of its own.
@@ -229,6 +233,17 @@ try {
   );
   check(followed.length === 1, "a followed forest appears on the follow board");
   check(!!followed[0]?.change, "the follow board says what changed since the last visit");
+  // The board has no rail, so it carries its own day strip, on the same day.
+  check(
+    await page.$eval('#board [data-day="3"]', (e) => e.classList.contains("is-active")),
+    "the follow board keeps the picked day",
+  );
+  await page.click('#board [data-day="0"]');
+  await new Promise((r) => setTimeout(r, 300));
+  check(
+    await page.$eval('#board [data-day="0"]', (e) => e.classList.contains("is-active")),
+    "the follow board switches day",
+  );
   // Follow answers "did anything move", not "where should I go": the map has
   // nothing to say there and should be gone, not merely ignored.
   check(

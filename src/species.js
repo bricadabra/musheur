@@ -1,5 +1,5 @@
 /**
- * Conditions per mushroom species, for the enthusiasts' section of the sheet.
+ * Conditions per mushroom species, for the sheet's mushroom section.
  *
  * The knowledge table (`species.json`, published with the data) says, for each
  * species, which trees it grows under, the soil temperatures it fruits at and

@@ -12,10 +12,10 @@
 
 import { esc, num } from "./html.js";
 import { t, locale, getLang } from "./i18n.js";
-import { limiting, detectTriggers } from "./score.js";
+import { limiting, detectTriggers, band } from "./score.js";
 import { scoreChart, seriesChart } from "./charts.js";
 import { departmentName } from "./departments.js";
-import { entryFor, trajectoryFor, forestById, state, TODAY_INDEX, CHART_FROM } from "./state.js";
+import { entryFor, trajectoryFor, forestById, state, dayIndex, TODAY_INDEX, CHART_FROM } from "./state.js";
 import { isFavourite } from "./store.js";
 import { flushText } from "./list.js";
 import { speciesTable } from "./data.js";
@@ -128,15 +128,14 @@ function relief(forest) {
 
 /**
  * Conditions per mushroom species, laid out like the stand above it: one line
- * per species with its index for the chosen day, and under it the share of
- * host trees and the dangerous lookalikes. A generic estimate drawn from the
- * stand, and said so in one line; the warning at the foot of the sheet covers
- * the rest.
+ * per species with a gauge of its index for the chosen day, and under it the
+ * share of host trees. A generic estimate drawn from the stand, and said so in
+ * one line; the warning at the foot of the sheet covers the rest.
  */
 function mushrooms(forest) {
   const table = speciesTable();
   if (!table || forest.hosts === undefined) return "";
-  const rows = speciesFor(forest, table, TODAY_INDEX + state.dayOffset);
+  const rows = speciesFor(forest, table, dayIndex());
   if (rows === null) return `<p class="text-sm text-faint">${t("mushrooms.unknown")}</p>`;
   if (!rows.length) return `<p class="text-sm text-faint">${t("mushrooms.none")}</p>`;
   const lang = getLang();
@@ -148,28 +147,28 @@ function mushrooms(forest) {
     rows
       .map(
         ({ species: sp, score, host, season }) =>
-          `<li data-species-row>` +
-          `<div class="flex justify-between gap-3">` +
-          `<span>${esc(sp.name[lang] ?? sp.name.fr)} ` +
-          `<span class="text-[0.8125rem] italic text-faint">${esc(sp.latin)}</span></span>` +
-          `<span class="tnum">${score}</span></div>` +
+          `<li data-species-row class="flex items-center gap-3">` +
+          `<div class="min-w-0 flex-1">` +
+          `<p>${esc(sp.name[lang] ?? sp.name.fr)} ` +
+          `<span class="text-[0.8125rem] italic text-faint">${esc(sp.latin)}</span></p>` +
           `<p class="text-[0.8125rem] text-faint">` +
           t("mushrooms.hosts", { pct: Math.round(host * 100) }) +
           (season < 1 ? ` · ${t("mushrooms.offSeason")}` : "") +
-          ` · ${t("mushrooms.lookalikes")} ` +
-          sp.lookalikes
-            .map((l) => {
-              const danger = t(`danger.${l.danger}`);
-              const tone = l.danger === "deadly" || l.danger === "toxic" ? "text-band-poor" : "";
-              return `${esc(l.fr)} (<span class="${tone}">${danger}</span>)`;
-            })
-            .join(", ") +
-          `</p></li>`,
+          `</p></div>` +
+          gauge(score) +
+          `</li>`,
       )
       .join("") +
     `</ul></div>`
   );
 }
+
+/** A 0-100 index as a bar in its band's colour, the figure beside it. */
+const gauge = (score) =>
+  `<span data-gauge class="flex w-2/5 shrink-0 items-center gap-2.5">` +
+  `<span class="block h-2 flex-1 rounded-full bg-line">` +
+  `<span class="block h-full rounded-full" style="width:${score}%;background:var(--color-band-${band(score).key})"></span></span>` +
+  `<span class="w-7 text-right tnum band-${band(score).key}">${score}</span></span>`;
 
 const fact = (label, value) =>
   `<div class="flex justify-between gap-3 py-1">` +
@@ -214,7 +213,7 @@ export function detailHTML(id) {
     trend(forest) +
     `</div></div>` +
 
-    section(t("detail.history"), scoreChart(forest.scores, TODAY_INDEX, chart)) +
+    section(t("detail.history"), scoreChart(forest.scores, TODAY_INDEX, { ...chart, day: dayIndex() })) +
 
     (d
       ? section(

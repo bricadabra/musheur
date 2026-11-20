@@ -15,7 +15,9 @@ import { esc, num } from "./html.js";
 import { t, locale } from "./i18n.js";
 import { limiting } from "./score.js";
 import { sparkline } from "./charts.js";
-import { state, visibleForests, entryFor, bandOf, flushFor, TODAY_INDEX, CHART_FROM } from "./state.js";
+import {
+  state, visibleForests, entryFor, bandOf, flushFor, dayIndex, TODAY_INDEX, CHART_FROM, FORECAST_DAYS,
+} from "./state.js";
 import { getPrefs } from "./store.js";
 import { STALE_MS } from "./weather.js";
 
@@ -28,6 +30,36 @@ export function flushText(forest) {
   return flush
     ? t("flush.expected", { start: shortDate(flush.flushStart), end: shortDate(flush.flushEnd) })
     : "";
+}
+
+/**
+ * The day strip, dated, shared by the rail and the board: every figure on
+ * screen is read for the day picked here.
+ *
+ * "J+4" is arithmetic the reader has to do; a weekday and a date is the thing
+ * they are actually planning around. Today gets a word rather than its
+ * weekday, because "is it worth going now" is a different question from "is it
+ * worth going on Sunday".
+ */
+export function dayStripHTML() {
+  const today = new Date();
+  return (
+    `<div data-day-strip class="flex gap-1" role="group" aria-label="${t("day.label")}">` +
+    Array.from({ length: FORECAST_DAYS }, (_, i) => {
+      const day = new Date(today);
+      day.setDate(day.getDate() + i);
+      const dow =
+        i === 0
+          ? t("day.todayShort")
+          : day.toLocaleDateString(locale(), { weekday: "short" }).replace(".", "");
+      return (
+        `<button type="button" class="day-btn${i === state.dayOffset ? " is-active" : ""}" ` +
+        `data-day="${i}" aria-pressed="${i === state.dayOffset}">` +
+        `<span class="dow">${dow}</span><span class="dom">${day.getDate()}</span></button>`
+      );
+    }).join("") +
+    `</div>`
+  );
 }
 
 /** The cautious / optimists' index switch, shared by the rail and the board. */
@@ -79,7 +111,7 @@ function row(forest) {
         `${t("limiting.prefix")} ${t(`limiting.${hold.key}`)}</span>`
       : "") +
     (flush ? `<span data-flush class="mt-1 block text-sm text-rain">${esc(flush)}</span>` : "") +
-    `<span data-spark class="mt-2.5 block">${sparkline(forest.scores, TODAY_INDEX, { from: CHART_FROM, height: 32 })}</span>` +
+    `<span data-spark class="mt-2.5 block">${sparkline(forest.scores, TODAY_INDEX, { from: CHART_FROM, height: 32, day: dayIndex() })}</span>` +
     `</span></button></li>`
   );
 }

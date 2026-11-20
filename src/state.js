@@ -22,6 +22,8 @@ export { PAST_DAYS, FORECAST_DAYS, HISTORY_DAYS };
 export const TODAY_INDEX = PAST_DAYS;
 // Where the charts start: a month of history, and the forecast after it.
 export const CHART_FROM = TODAY_INDEX - HISTORY_DAYS;
+/** Index in the series of the day picked in the day strip. */
+export const dayIndex = () => TODAY_INDEX + state.dayOffset;
 
 export const state = {
   mode: getPrefs().mode ?? "browse",
